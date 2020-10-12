@@ -1374,7 +1374,7 @@ describe( 'passport-saml /', function() {
           samlObj.validatePostResponse( container, function( err, profile, logout ) {
             should.not.exist( err );
             const eptid = profile['urn:oid:1.3.6.1.4.1.5923.1.1.1.10'];
-            const nameid = eptid['NameID'][0]
+            const nameid = eptid.$$.NameID[0]
             nameid._.should.eql(nameid_opaque_string)
             nameid.$.NameQualifier.should.equal(nameQualifier)
             nameid.$.SPNameQualifier.should.equal(spNameQualifier)
