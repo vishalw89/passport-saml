@@ -587,13 +587,11 @@ class SAML {
 
   }
 
-  getLogoutUrl(req: RequestWithUser, options: AuthenticateOptions & AuthorizeOptions, callback: (err: Error | null, url?: string | null) => void) {
-    return this.generateLogoutRequest(req)
-      .then(request => {
-        const operation = 'logout';
-        const overrideParams = options ? options.additionalParams || {} : {};
-        return this.requestToUrl(request, null, operation, this.getAdditionalParams(req, operation, overrideParams), callback);
-      });
+  async getLogoutUrl(req: RequestWithUser, options: AuthenticateOptions & AuthorizeOptions, callback: (err: Error | null, url?: string | null) => void) {
+    const request = await this.generateLogoutRequest(req);
+    const operation = 'logout';
+    const overrideParams = options ? options.additionalParams || {} : {};
+    return this.requestToUrl(request, null, operation, this.getAdditionalParams(req, operation, overrideParams), callback);
   }
 
   getLogoutResponseUrl(req: RequestWithUser, options: AuthenticateOptions & AuthorizeOptions, callback: (err: Error | null, url?: string | null) => void) {
@@ -614,24 +612,22 @@ class SAML {
     return cert;
   }
 
-  certsToCheck(): Promise<undefined | string[]> {
+  async certsToCheck(): Promise<undefined | string[]> {
     if (!this.options.cert) {
       return Promise.resolve(undefined);
     }
     if (typeof(this.options.cert) === 'function') {
-      return util.promisify(this.options.cert as CertCallback)()
-      .then((certs) => {
-        if (!Array.isArray(certs)) {
-          certs = [certs as string];
-        }
-        return Promise.resolve(certs as string[]);
-      });
+      let certs = await util.promisify((this.options.cert as CertCallback))();
+      if (!Array.isArray(certs)) {
+        certs = [(certs as string)];
+      }
+      return certs as string[];
     }
     let certs = this.options.cert;
     if (!Array.isArray(certs)) {
       certs = [certs];
     }
-    return Promise.resolve(certs);
+    return certs;
   }
 
   // This function checks that the |currentNode| in the |fullXml| document contains exactly 1 valid
@@ -688,7 +684,7 @@ class SAML {
     return sig.checkSignature(fullXml);
   }
 
-  validatePostResponse(container: any, callback: (err: Error | null, profile?: Profile | null, loggedOut?: boolean) => void) {
+  async validatePostResponse(container: any, callback: (err: Error | null, profile?: Profile | null, loggedOut?: boolean) => void) {
     let xml: string, doc: Document, inResponseTo: string | null;
 
     (async() => {
@@ -836,20 +832,16 @@ class SAML {
     });
   }
 
-  validateInResponseTo(inResponseTo: string | null) {
+  async validateInResponseTo(inResponseTo: string | null) {
     if (this.options.validateInResponseTo) {
       if (inResponseTo) {
-        return util.promisify(this.cacheProvider.get).bind(this.cacheProvider)(inResponseTo)
-          .then(result => {
-            if (!result)
-              throw new Error('InResponseTo is not valid');
-            return Promise.resolve();
-          });
+        const result = await util.promisify(this.cacheProvider.get).bind(this.cacheProvider)(inResponseTo);
+        if (!result)
+          throw new Error('InResponseTo is not valid');
+        return;
       } else {
         throw new Error('InResponseTo is missing from response');
       }
-    } else {
-      return Promise.resolve();
     }
   }
 
@@ -885,7 +877,7 @@ class SAML {
     });
   }
 
-  hasValidSignatureForRedirect(container: ParsedQs, originalQuery: string | null): Promise<boolean | void> {
+  async hasValidSignatureForRedirect(container: ParsedQs, originalQuery: string | null): Promise<boolean | void> {
     const tokens = originalQuery!.split('&');
     const getParam = (key: string) => {
       const exists = tokens.filter(t => { return new RegExp(key).test(t); });
@@ -901,18 +893,15 @@ class SAML {
 
       urlString += '&' + getParam('SigAlg');
 
-      return this.certsToCheck()
-        .then(certs => {
-          const hasValidQuerySignature = certs!.some(cert => {
-            return this.validateSignatureForRedirect(
-              urlString, container.Signature as string, container.SigAlg as string, cert
-            );
-          });
-
-          if (!hasValidQuerySignature) {
-            throw 'Invalid signature';
-          }
-        });
+      const certs = await this.certsToCheck();
+      const hasValidQuerySignature = certs!.some(cert => {
+        return this.validateSignatureForRedirect(
+          urlString, (container.Signature as string), (container.SigAlg as string), cert
+        );
+      });
+      if (!hasValidQuerySignature) {
+        throw 'Invalid signature';
+      }
     } else {
       return Promise.resolve(true);
     }
@@ -981,7 +970,7 @@ class SAML {
     }
   }
 
-  processValidlySignedAssertion(xml: xml2js.convertableToString, samlResponseXml: string, inResponseTo: string, callback: (err: Error | null, profile?: Profile | undefined, loggedOut?: boolean | undefined) => void) {
+  async processValidlySignedAssertion(xml: xml2js.convertableToString, samlResponseXml: string, inResponseTo: string, callback: (err: Error | null, profile?: Profile | undefined, loggedOut?: boolean | undefined) => void) {
     let msg;
     const parserConfig = {
       explicitRoot: true,
@@ -993,7 +982,7 @@ class SAML {
     let assertion: any;
     let parsedAssertion: any;
     const parser = new xml2js.Parser(parserConfig);
-    parser.parseStringPromise(xml)
+    return await parser.parseStringPromise(xml)
     .then((doc: any) => {
       parsedAssertion = doc;
       assertion = doc.Assertion;
