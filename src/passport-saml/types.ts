@@ -162,5 +162,5 @@ export type VerifyWithoutRequest = (
 export type SamlOptionsCallback = (err: Error | null, samlOptions?: SamlConfig) => void;
 
 export interface MultiSamlConfig extends SamlConfig {
-  getSamlOptions(req: express.Request, callback: SamlOptionsCallback): void;
+  getSamlOptionsAsync(req: express.Request): Promise<SamlConfig>;
 }

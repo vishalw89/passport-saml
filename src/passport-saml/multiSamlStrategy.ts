@@ -15,8 +15,10 @@ import {
 class MultiSamlStrategy extends SamlStrategy {
   _options: MultiSamlConfig;
   constructor(options: MultiSamlConfig, verify: VerifyWithRequest | VerifyWithoutRequest) {
-    if (!options || typeof options.getSamlOptions != "function") {
-      throw new Error("Please provide a getSamlOptions function");
+    if (!options || typeof options.getSamlOptionsAsync != "function") {
+      throw new Error(
+        "Please provide a getSamlOptionsAsync function. getSamlOptions function is deprecated"
+      );
     }
 
     if (!options.requestIdExpirationPeriodMs) {
@@ -33,59 +35,50 @@ class MultiSamlStrategy extends SamlStrategy {
     this._options = options;
   }
 
-  authenticate(req: RequestWithUser, options: AuthenticateOptions & AuthorizeOptions) {
-    this._options.getSamlOptions(req, (err, samlOptions) => {
-      if (err) {
-        return this.error(err);
-      }
-
-      const samlService = new saml.SAML({ ...this._options, ...samlOptions });
-      const strategy = Object.assign({}, this, { _saml: samlService });
-      Object.setPrototypeOf(strategy, this);
-      super.authenticate.call(strategy, req, options);
-    });
+  async authenticate(req: RequestWithUser, options: AuthenticateOptions & AuthorizeOptions) {
+    let samlOptions;
+    try {
+      samlOptions = await this._options.getSamlOptionsAsync(req);
+    } catch (err) {
+      return this.error(err);
+    }
+    const samlService = new saml.SAML({ ...this._options, ...samlOptions });
+    const strategy = Object.assign({}, this, { _saml: samlService });
+    Object.setPrototypeOf(strategy, this);
+    super.authenticate.call(strategy, req, options);
   }
 
-  logout(
+  async logout(
     req: RequestWithUser,
     callback: (err: Error | null, url?: string | null | undefined) => void
   ) {
-    this._options.getSamlOptions(req, (err, samlOptions) => {
-      if (err) {
-        return callback(err);
-      }
-
-      const samlService = new saml.SAML(Object.assign({}, this._options, samlOptions));
-      const strategy = Object.assign({}, this, { _saml: samlService });
-      Object.setPrototypeOf(strategy, this);
-      super.logout.call(strategy, req, callback);
-    });
+    let samlOptions;
+    try {
+      samlOptions = await this._options.getSamlOptionsAsync(req);
+    } catch (err) {
+      return callback(err);
+    }
+    const samlService = new saml.SAML(Object.assign({}, this._options, samlOptions));
+    const strategy = Object.assign({}, this, { _saml: samlService });
+    Object.setPrototypeOf(strategy, this);
+    super.logout.call(strategy, req, callback);
   }
 
-  /** @ts-expect-error typescript disallows changing method signature in a subclass */
-  generateServiceProviderMetadata(
+  generateServiceProviderMetadata(): string {
+    throw new Error("Use generateServiceMetadataAsync method instead");
+  }
+
+  async generateServiceProviderMetadataAsync(
     req: Request,
     decryptionCert: string | null,
-    signingCert: string | null,
-    callback: (err: Error | null, metadata?: string) => void
+    signingCert: string | null
   ) {
-    if (typeof callback !== "function") {
-      throw new Error("Metadata can't be provided synchronously for MultiSamlStrategy.");
-    }
+    const samlOptions = await this._options.getSamlOptionsAsync(req);
 
-    return this._options.getSamlOptions(req, (err, samlOptions) => {
-      if (err) {
-        return callback(err);
-      }
-
-      const samlService = new saml.SAML(Object.assign({}, this._options, samlOptions));
-      const strategy = Object.assign({}, this, { _saml: samlService });
-      Object.setPrototypeOf(strategy, this);
-      return callback(
-        null,
-        super.generateServiceProviderMetadata.call(strategy, decryptionCert, signingCert)
-      );
-    });
+    const samlService = new saml.SAML(Object.assign({}, this._options, samlOptions));
+    const strategy = Object.assign({}, this, { _saml: samlService });
+    Object.setPrototypeOf(strategy, this);
+    return super.generateServiceProviderMetadata.call(strategy, decryptionCert, signingCert);
   }
 }
 
