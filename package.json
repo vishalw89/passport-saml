@@ -26,6 +26,7 @@
     "url": "https://github.com/bergie/passport-saml.git"
   },
   "main": "./lib/passport-saml",
+  "types": "index.d.ts",
   "dependencies": {
     "debug": "^3.1.0",
     "passport-strategy": "*",
